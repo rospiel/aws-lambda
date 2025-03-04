@@ -3,20 +3,31 @@ package com.validatorfile;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import com.amazonaws.services.lambda.runtime.events.S3Event;
+import com.amazonaws.services.lambda.runtime.events.models.s3.S3EventNotification;
+import com.validatorfile.service.S3DeleteObjectUseCase;
+import com.validatorfile.service.ValidatorFileUseCase;
+import com.validatorfile.service.impl.S3DeleteObjectUseCaseImpl;
+import com.validatorfile.service.impl.ValidatorFileUseCaseImpl;
 
-import java.util.Map;
+public class Handler implements RequestHandler<S3Event, String> {
 
-public class Handler implements RequestHandler<Map<String, String>, String> {
-
-    private Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    private ValidatorFileUseCase validatorFileUseCase = new ValidatorFileUseCaseImpl();
 
     @Override
-    public String handleRequest(Map<String, String> data, Context context) {
+    public String handleRequest(S3Event event, Context context) {
         LambdaLogger logger = context.getLogger();
-        logger.log(gson.toJson(data));
+        S3EventNotification.S3EventNotificationRecord s3EventNotificationRecord = event.getRecords().get(0);
+        String fileName = s3EventNotificationRecord.getS3().getObject().getUrlDecodedKey();
+        logger.log("Starting validation of file ".concat(fileName));
 
-        return "OK";
+        boolean isValid = validatorFileUseCase.isValid(context, logger, fileName);
+        if (isValid) {
+            return "OK";
+        }
+
+        S3DeleteObjectUseCase s3DeleteObjectUseCase = new S3DeleteObjectUseCaseImpl();
+        s3DeleteObjectUseCase.deleteObject(context, logger, event, fileName);
+        return "NOK";
     }
 }
